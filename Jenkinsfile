@@ -17,7 +17,7 @@ pipeline {
         stage('Clean Workspace') {
             steps {
                 script {
-                    echo "Deleting workspace to remove stale Git locks and old files..."
+                    echo "Cleaning workspace to remove stale Git locks and old files..."
                     deleteDir()
                 }
             }
