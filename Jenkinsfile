@@ -2,38 +2,33 @@ pipeline {
     agent any
 
     environment {
-        // SonarQube token stored in Jenkins credentials (type: Secret Text)
-        SONAR_TOKEN = credentials('sonar-token')
-        // Azure Container Registry login
-        ACR_REGISTRY = 'myacrregistry123456789.azurecr.io'
-        IMAGE_NAME = 'mydotnetapp'  // lowercase for Docker
-        IMAGE_TAG = 'latest'
+        // Add other environment variables here
+        ACR_REGISTRY = "myacrregistry123456789.azurecr.io"
+        IMAGE_NAME = "mydotnetapp" // lowercase for Docker
     }
 
     stages {
-
         stage('Checkout SCM') {
             steps {
                 checkout scm
             }
         }
 
-        stage('SonarQube Analysis') {
+        stage('Restore & Build') {
             steps {
-                script {
-                    // Start SonarQube scanner
-                    sh """
-                    dotnet sonarscanner begin \
-                        /k:MyDotNetApp \
-                        /d:sonar.login=${SONAR_TOKEN} \
-                        /d:sonar.host.url=http://your-sonarqube-server:9000
-                    """
-                    
-                    // Restore & build
+                dir('.') {
                     sh 'dotnet restore'
                     sh 'dotnet build -c Release --no-restore'
-                    
-                    // End SonarQube scanner
+                }
+            }
+        }
+
+        stage('SonarQube Analysis') {
+            steps {
+                // Only change: using correct credential ID for SonarQube
+                withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
+                    sh "dotnet sonarscanner begin /k:MyDotNetApp /d:sonar.login=${SONAR_TOKEN} /d:sonar.host.url=http://<SONARQUBE_SERVER>:9000"
+                    sh 'dotnet build' // SonarScanner needs a build step
                     sh "dotnet sonarscanner end /d:sonar.login=${SONAR_TOKEN}"
                 }
             }
@@ -41,31 +36,36 @@ pipeline {
 
         stage('Build Docker Image') {
             steps {
-                script {
-                    def dockerImage = "${ACR_REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}"
-                    sh "docker build -t ${dockerImage} ."
-                }
+                // Only change: IMAGE_NAME is lowercase
+                sh "docker build -t ${ACR_REGISTRY}/${IMAGE_NAME}:latest ."
             }
         }
 
-        stage('Push Docker Image') {
+        stage('Trivy Scan') {
             steps {
-                script {
-                    def dockerImage = "${ACR_REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}"
-                    // Login to ACR (assuming az CLI installed)
-                    sh "az acr login --name myacrregistry123456789"
-                    sh "docker push ${dockerImage}"
+                sh "trivy image --exit-code 1 --severity HIGH,CRITICAL ${ACR_REGISTRY}/${IMAGE_NAME}:latest"
+            }
+        }
+
+        stage('Login to ACR and Push') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'acr-credentials', passwordVariable: 'ACR_PASS', usernameVariable: 'ACR_USER')]) {
+                    sh "docker login ${ACR_REGISTRY} -u ${ACR_USER} -p ${ACR_PASS}"
+                    sh "docker push ${ACR_REGISTRY}/${IMAGE_NAME}:latest"
                 }
             }
         }
     }
 
     post {
+        always {
+            echo 'Pipeline finished!'
+        }
         success {
-            echo 'Pipeline completed successfully!'
+            echo 'Pipeline succeeded!'
         }
         failure {
-            echo 'Pipeline failed. Check logs!'
+            echo 'Pipeline failed!'
         }
     }
 }
