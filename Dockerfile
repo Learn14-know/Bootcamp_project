@@ -1,21 +1,17 @@
-# Stage 1: Build
-FROM mcr.microsoft.com/dotnet/sdk:7.0 AS build
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /app
 
-# copy solution and project
-COPY *.sln .  # only if solution exists
-COPY MyApi/ ./MyApi/
+# Copy csproj and restore as distinct layers
+COPY MyApi.csproj .
+RUN dotnet restore MyApi.csproj
 
-WORKDIR /app/MyApi
+# Copy everything else and build
+COPY . .
+RUN dotnet publish MyApi.csproj -c Release -o out
 
-# restore & publish
-RUN dotnet restore
-RUN dotnet publish -c Release -o /out
-
-# Stage 2: Run
-FROM mcr.microsoft.com/dotnet/aspnet:7.0
+# Build runtime image
+FROM mcr.microsoft.com/dotnet/aspnet:8.0
 WORKDIR /app
-COPY --from=build /out .
-
-EXPOSE 80
+COPY --from=build /app/out .
 ENTRYPOINT ["dotnet", "MyApi.dll"]
+
