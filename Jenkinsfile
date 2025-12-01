@@ -28,20 +28,22 @@ pipeline {
             }
         }
 
-        stage('SonarQube Analysis') {
-            steps {
-                withSonarQubeEnv('SonarQube') {
-                    withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
-                        sh '''
-                            export PATH="$HOME/.dotnet/tools:$PATH"
-                            dotnet sonarscanner begin /k:mydotnetapp /d:sonar.login=$SONAR_TOKEN
-                            dotnet build ./MyApi.csproj
-                            dotnet sonarscanner end /d:sonar.login=$SONAR_TOKEN
-                        '''
-                    }
-                }
+       stage('SonarQube Analysis') {
+    steps {
+        withSonarQubeEnv('SonarQube') {
+            withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
+                sh '''
+                    export DOTNET_ROOT=$HOME/dotnet
+                    export PATH=$DOTNET_ROOT:$HOME/.dotnet/tools:$PATH
+                    dotnet sonarscanner begin /k:mydotnetapp /d:sonar.login=$SONAR_TOKEN
+                    dotnet build ./MyApi.csproj
+                    dotnet sonarscanner end /d:sonar.login=$SONAR_TOKEN
+                '''
             }
         }
+    }
+}
+
 
         stage('Build Docker Image') {
             steps {
