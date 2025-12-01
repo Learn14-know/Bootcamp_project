@@ -1,8 +1,8 @@
 pipeline {
     agent any
     environment {
-        SONAR_TOKEN = credentials('sonar-token') // Make sure this ID matches your Jenkins credentials
-        PROJECT_NAME = "mydotnetapp" // lowercase for Docker compatibility
+        SONAR_TOKEN = credentials('sonar-token') // Jenkins credential ID
+        PROJECT_NAME = "mydotnetapp" // lowercase for Docker
     }
     stages {
         stage('Checkout') {
@@ -15,6 +15,8 @@ pipeline {
             steps {
                 dir('.') {
                     sh 'dotnet clean ./MyApi.csproj'
+                    // Ensure Swashbuckle.AspNetCore is installed
+                    sh 'dotnet add ./MyApi.csproj package Swashbuckle.AspNetCore --version 6.6.1 --no-restore || true'
                     sh 'dotnet restore ./MyApi.csproj --use-lock-file'
                     sh 'dotnet build ./MyApi.csproj -c Release --no-restore'
                 }
@@ -25,7 +27,7 @@ pipeline {
             steps {
                 // Catch errors so pipeline continues even if Sonar fails
                 catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
-                    withSonarQubeEnv('SonarQube') { // <-- updated to match your Jenkins config
+                    withSonarQubeEnv('SonarQube') { // <-- your configured Jenkins SonarQube installation name
                         sh "dotnet sonarscanner begin /k:${PROJECT_NAME} /d:sonar.login=${SONAR_TOKEN}"
                         sh 'dotnet build ./MyApi.csproj'
                         sh "dotnet sonarscanner end /d:sonar.login=${SONAR_TOKEN}"
