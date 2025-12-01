@@ -2,7 +2,7 @@ pipeline {
     agent any
     
     environment {
-        ACR_NAME = "acrfirst123456789"
+        ACR_NAME = "myacrregistry123456789"
         IMAGE_NAME = "mydotnetapp"
         ACR_LOGIN_SERVER = "${ACR_NAME}.azurecr.io"
     }
