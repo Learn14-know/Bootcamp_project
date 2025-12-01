@@ -2,134 +2,101 @@ pipeline {
     agent any
 
     environment {
-        ACR_REGISTRY   = "myacrregistry123456789.azurecr.io"
-        IMAGE_NAME     = "${env.ACR_REGISTRY}/mydotnetapi"
+        // SonarQube settings
         SONAR_HOST_URL = "http://20.151.236.33:9000"
-        DOCKER_TAG     = "${env.BUILD_ID}-${new Date().format('yyyyMMddHHmmss')}"
-    }
+        SONAR_TOKEN = credentials('sonar-token') // replace with your Jenkins credential ID
 
-    options {
-        buildDiscarder(logRotator(numToKeepStr: '10'))
-        timestamps()
+        // Docker / ACR settings
+        ACR_NAME = "myacrregistry123456789"
+        IMAGE_NAME = "mydotnetapi"
+        IMAGE_TAG = "latest"
     }
 
     stages {
+
         stage('Clean Workspace') {
             steps {
-                script {
-                    echo "Cleaning workspace to remove stale Git locks and old files..."
-                    deleteDir()
-                }
+                echo "Cleaning workspace to remove stale Git locks..."
+                deleteDir() // wipes everything including .git folder
             }
         }
 
-        stage('Checkout') {
+        stage('Checkout SCM') {
             steps {
-                checkout scm
+                checkout([$class: 'GitSCM',
+                    branches: [[name: '*/main']],
+                    doGenerateSubmoduleConfigurations: false,
+                    extensions: [],
+                    userRemoteConfigs: [[
+                        url: 'https://github.com/Learn14-know/Bootcamp_project/',
+                        credentialsId: '8b560c32-691e-4f7b-a7be-bb913f53e41b'
+                    ]]
+                ])
             }
         }
 
-        stage('Prepare Workspace') {
+        stage('Find Project File') {
             steps {
                 script {
-                    echo "Fixing permissions and cleaning old build artifacts..."
-                    sh '''
-                        chmod -R 775 .
-                        rm -rf obj bin
-                    '''
-                }
-            }
-        }
-
-        stage('Find project file') {
-            steps {
-                script {
-                    def proj = sh(returnStdout: true, script: "find . -maxdepth 3 -type f -name '*.csproj' | head -n 1").trim()
-                    if (!proj) error "No .csproj found in workspace"
-                    env.PROJECT_FILE = proj
-                    echo "Using project: ${env.PROJECT_FILE}"
+                    PROJECT_FILE = sh(
+                        script: "find . -maxdepth 3 -type f -name '*.csproj' | head -n 1",
+                        returnStdout: true
+                    ).trim()
+                    echo "Using project: ${PROJECT_FILE}"
                 }
             }
         }
 
         stage('Restore & Build') {
             steps {
-                sh '''
-                    dotnet restore "${PROJECT_FILE}"
-                    dotnet build "${PROJECT_FILE}" -c Release
-                '''
+                sh "dotnet restore ${PROJECT_FILE}"
+                sh "dotnet build ${PROJECT_FILE} -c Release --no-restore"
             }
         }
 
         stage('SonarQube Analysis') {
             steps {
-                withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
-                    sh '''
-                        echo "Running SonarScanner via Docker..."
-                        docker run --rm \
-                            -e SONAR_HOST_URL="${SONAR_HOST_URL}" \
-                            -e SONAR_TOKEN="$SONAR_TOKEN" \
-                            -v "$(pwd)":/usr/src \
-                            -w /usr/src \
-                            sonarsource/sonar-scanner-cli:latest \
-                            -Dsonar.projectKey=${JOB_NAME}-${BUILD_ID} \
-                            -Dsonar.sources=. \
-                            -Dsonar.host.url="${SONAR_HOST_URL}" \
-                            -Dsonar.login="$SONAR_TOKEN"
-                    '''
-                }
+                sh """
+                    dotnet sonarscanner begin /k:"mydotnetapi" /d:sonar.host.url="${SONAR_HOST_URL}" /d:sonar.login="${SONAR_TOKEN}"
+                    dotnet build ${PROJECT_FILE}
+                    dotnet sonarscanner end /d:sonar.login="${SONAR_TOKEN}"
+                """
             }
         }
 
         stage('Build Docker Image') {
             steps {
-                script {
-                    env.FULL_IMAGE = "${IMAGE_NAME}:${DOCKER_TAG}"
-                }
-                sh '''
-                    echo "Building Docker image ${FULL_IMAGE}"
-                    docker build -t "${FULL_IMAGE}" .
-                    docker image inspect "${FULL_IMAGE}" > image-inspect.json || true
-                '''
+                sh "docker build -t ${ACR_NAME}.azurecr.io/${IMAGE_NAME}:${IMAGE_TAG} ."
             }
         }
 
         stage('Trivy Scan') {
             steps {
-                sh '''
-                    echo "Scanning ${FULL_IMAGE} with Trivy..."
-                    docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image --exit-code 1 --severity HIGH,CRITICAL "${FULL_IMAGE}" || echo "Trivy found issues"
-                '''
+                sh "trivy image ${ACR_NAME}.azurecr.io/${IMAGE_NAME}:${IMAGE_TAG}"
             }
         }
 
         stage('Login to ACR and Push') {
             steps {
-                withCredentials([usernamePassword(credentialsId: 'acr-creds', usernameVariable: 'ACR_USER', passwordVariable: 'ACR_PASS')]) {
-                    sh '''
-                        echo "$ACR_PASS" | docker login ${ACR_REGISTRY} -u "$ACR_USER" --password-stdin
-                        echo "Pushing ${FULL_IMAGE}"
-                        docker push "${FULL_IMAGE}"
-                    '''
+                withCredentials([usernamePassword(credentialsId: 'acr-credentials', usernameVariable: 'ACR_USER', passwordVariable: 'ACR_PASS')]) {
+                    sh """
+                        echo ${ACR_PASS} | docker login ${ACR_NAME}.azurecr.io -u ${ACR_USER} --password-stdin
+                        docker push ${ACR_NAME}.azurecr.io/${IMAGE_NAME}:${IMAGE_TAG}
+                    """
                 }
             }
         }
     }
 
     post {
+        always {
+            echo "Pipeline finished"
+        }
         success {
-            echo "Pipeline completed successfully. Image pushed: ${FULL_IMAGE}"
-            archiveArtifacts artifacts: 'image-inspect.json', onlyIfSuccessful: true
+            echo "Pipeline succeeded!"
         }
         failure {
-            echo "Pipeline failed - check logs above"
-        }
-        always {
-            sh '''
-                if [ -n "${FULL_IMAGE}" ]; then
-                    docker rmi "${FULL_IMAGE}" || true
-                fi
-            '''
+            echo "Pipeline failed!"
         }
     }
 }
