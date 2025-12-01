@@ -2,7 +2,7 @@ pipeline {
     agent any
     
     environment {
-        ACR_NAME = "myacr1first234567"
+        ACR_NAME = "acrfirst123456789"
         IMAGE_NAME = "mydotnetapp"
         ACR_LOGIN_SERVER = "${ACR_NAME}.azurecr.io"
     }
@@ -11,7 +11,7 @@ pipeline {
         
         stage('Checkout Code') {
             steps {
-                git branch: 'main', url: 'https://github.com/your-user/your-repo.git'
+                git branch: 'main', url: 'https://github.com/Learn14-know/Bootcamp_Project'
             }
         }
 
