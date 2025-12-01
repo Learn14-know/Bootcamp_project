@@ -6,6 +6,7 @@ pipeline {
         ACR_NAME = 'myacrregistry123456789'
         IMAGE_NAME = 'mydotnetapi'
         IMAGE_TAG = 'latest'
+        PROJECT_FILE = ''
     }
 
     stages {
@@ -36,6 +37,9 @@ pipeline {
 
         stage('Restore & Build') {
             steps {
+                // Install Swagger package dynamically to fix CS1061 errors
+                sh "dotnet add ${PROJECT_FILE} package Swashbuckle.AspNetCore --version 6.7.0"
+
                 sh "dotnet restore ${PROJECT_FILE}"
                 sh "dotnet build ${PROJECT_FILE} -c Release --no-restore"
             }
@@ -44,6 +48,7 @@ pipeline {
         stage('SonarQube Analysis') {
             steps {
                 withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
+                    // Use SonarScanner Docker image to avoid dotnet-sonarscanner installation issues
                     sh """
                         docker run --rm \
                             -e SONAR_HOST_URL=${SONAR_HOST_URL} \
