@@ -1,8 +1,9 @@
 pipeline {
     agent any
     environment {
-        SONAR_TOKEN = credentials('sonar-token') // Jenkins credential ID
-        PROJECT_NAME = "mydotnetapp" // lowercase for Docker
+        SONAR_TOKEN = credentials('sonar-token') // Make sure this ID matches your Jenkins credentials
+        PROJECT_NAME = "mydotnetapp" // lowercase for Docker compatibility
+        ACR_LOGIN = "myacrregistry123456789.azurecr.io"
     }
     stages {
         stage('Checkout') {
@@ -15,8 +16,6 @@ pipeline {
             steps {
                 dir('.') {
                     sh 'dotnet clean ./MyApi.csproj'
-                    // Ensure Swashbuckle.AspNetCore is installed
-                    sh 'dotnet add ./MyApi.csproj package Swashbuckle.AspNetCore --version 6.6.1 --no-restore || true'
                     sh 'dotnet restore ./MyApi.csproj --use-lock-file'
                     sh 'dotnet build ./MyApi.csproj -c Release --no-restore'
                 }
@@ -27,7 +26,9 @@ pipeline {
             steps {
                 // Catch errors so pipeline continues even if Sonar fails
                 catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
-                    withSonarQubeEnv('SonarQube') { // <-- your configured Jenkins SonarQube installation name
+                    withSonarQubeEnv('SonarQube') { // <-- Use the exact Jenkins SonarQube installation name
+                        sh "dotnet tool install --global dotnet-sonarscanner || true" // Ensure the tool is available
+                        sh "export PATH=\$PATH:/root/.dotnet/tools"
                         sh "dotnet sonarscanner begin /k:${PROJECT_NAME} /d:sonar.login=${SONAR_TOKEN}"
                         sh 'dotnet build ./MyApi.csproj'
                         sh "dotnet sonarscanner end /d:sonar.login=${SONAR_TOKEN}"
@@ -54,9 +55,9 @@ pipeline {
             steps {
                 withCredentials([usernamePassword(credentialsId: 'acr-credentials', passwordVariable: 'ACR_PASS', usernameVariable: 'ACR_USER')]) {
                     sh """
-                        docker login myacr.azurecr.io -u $ACR_USER -p $ACR_PASS
-                        docker tag ${PROJECT_NAME}:latest myacr.azurecr.io/${PROJECT_NAME}:latest
-                        docker push myacr.azurecr.io/${PROJECT_NAME}:latest
+                        docker login ${ACR_LOGIN} -u $ACR_USER -p $ACR_PASS
+                        docker tag ${PROJECT_NAME}:latest ${ACR_LOGIN}/${PROJECT_NAME}:latest
+                        docker push ${ACR_LOGIN}/${PROJECT_NAME}:latest
                     """
                 }
             }
