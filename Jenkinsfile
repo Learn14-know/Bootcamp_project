@@ -6,7 +6,7 @@ pipeline {
         ACR_NAME = 'myacrregistry123456789'
         IMAGE_NAME = 'mydotnetapi'
         IMAGE_TAG = 'latest'
-        DOTNET_TOOLS_PATH = "$HOME/.dotnet/tools"
+        DOTNET_TOOLS_PATH = "${env.HOME}/.dotnet/tools"
     }
 
     stages {
@@ -30,15 +30,13 @@ pipeline {
                         script: "find . -maxdepth 3 -type f -name '*.csproj' | head -n 1",
                         returnStdout: true
                     ).trim()
-                    echo "Using project: ${PROJECT_FILE}"
+                    PROJECT_DIR = sh(
+                        script: "dirname ${PROJECT_FILE}",
+                        returnStdout: true
+                    ).trim()
+                    echo "Using project file: ${PROJECT_FILE}"
+                    echo "Project directory: ${PROJECT_DIR}"
                 }
-            }
-        }
-
-        stage('Install Dependencies') {
-            steps {
-                // Install Swagger if missing
-                sh "dotnet add ${PROJECT_FILE} package Swashbuckle.AspNetCore --version 6.6.0 || true"
             }
         }
 
@@ -52,29 +50,31 @@ pipeline {
         stage('SonarQube Analysis') {
             steps {
                 withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
-                    sh """
-                        # Add .NET tools path
-                        export PATH="$PATH:${DOTNET_TOOLS_PATH}"
+                    script {
+                        // Remove old sonar-project.properties if any
+                        sh "rm -f sonar-project.properties"
 
-                        # Install dotnet-sonarscanner if missing
-                        dotnet tool install --global dotnet-sonarscanner || true
+                        // Ensure dotnet tools path is on PATH
+                        sh "export PATH=\$PATH:${DOTNET_TOOLS_PATH}"
 
-                        # Begin SonarQube analysis
-                        dotnet sonarscanner begin /k:MyDotNetApp /d:sonar.host.url=${SONAR_HOST_URL} /d:sonar.login=$SONAR_TOKEN
+                        // Install dotnet-sonarscanner globally if missing
+                        sh "dotnet tool install --global dotnet-sonarscanner || true"
 
-                        # Build project (required for analysis)
-                        dotnet build ${PROJECT_FILE} -c Release
-
-                        # End SonarQube analysis
-                        dotnet sonarscanner end /d:sonar.login=$SONAR_TOKEN
-                    """
+                        // Run SonarScanner begin/build/end
+                        sh """
+                            export PATH=\$PATH:${DOTNET_TOOLS_PATH}
+                            dotnet sonarscanner begin /k:MyDotNetApp /d:sonar.host.url=${SONAR_HOST_URL} /d:sonar.login=$SONAR_TOKEN /d:sonar.projectBaseDir=${PROJECT_DIR}
+                            dotnet build ${PROJECT_FILE} -c Release
+                            dotnet sonarscanner end /d:sonar.login=$SONAR_TOKEN
+                        """
+                    }
                 }
             }
         }
 
         stage('Build Docker Image') {
             steps {
-                sh "docker build -t ${ACR_NAME}.azurecr.io/${IMAGE_NAME}:${IMAGE_TAG} ."
+                sh "docker build -t ${ACR_NAME}.azurecr.io/${IMAGE_NAME}:${IMAGE_TAG} ${PROJECT_DIR}"
             }
         }
 
