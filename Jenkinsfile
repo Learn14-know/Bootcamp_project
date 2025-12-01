@@ -3,7 +3,7 @@ pipeline {
 
   environment {
     // change these two to match your ACR / repository if desired
-    ACR_REGISTRY = "myregistry.azurecr.io"      // <-- replace with your ACR login server
+    ACR_REGISTRY = "myacrregistry123456789.azurecr.io"      // <-- replace with your ACR login server
     IMAGE_NAME   = "${env.ACR_REGISTRY}/mydotnetapi"
     SONAR_HOST_URL = "http://20.151.236.33:9000" // <-- replace if different
     // if you want a specific tag, set DOCKER_IMAGE_TAG credential or leave blank to use timestamp
