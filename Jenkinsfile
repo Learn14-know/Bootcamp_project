@@ -2,13 +2,12 @@ pipeline {
     agent any
 
     environment {
+        DOTNET_ROOT = "$HOME/.dotnet"
+        PATH = "$HOME/.dotnet/tools:$PATH:$PATH"
         ACR_NAME = "myacrregistry123456789"
-        PATH = "/home/azureuser/.dotnet/tools:$PATH"  // include dotnet-sonarscanner
-        SONAR_TOKEN = credentials('sonar-token-id')  // replace with your Jenkins secret ID
     }
 
     stages {
-
         stage('Checkout') {
             steps {
                 checkout scm
@@ -18,21 +17,33 @@ pipeline {
         stage('Restore & Build') {
             steps {
                 dir('MyApi') {
-                    sh 'dotnet restore --use-lock-file'
-                    sh 'dotnet build -c Release --no-restore'
+                    sh 'dotnet restore ./MyApi.csproj --use-lock-file'
+                    sh 'dotnet build ./MyApi.csproj -c Release --no-restore'
+                }
+            }
+        }
+
+        stage('Install Swagger if missing') {
+            steps {
+                dir('MyApi') {
+                    sh 'dotnet add ./MyApi.csproj package Swashbuckle.AspNetCore --version 6.6.1 --no-restore || true'
+                    sh 'dotnet restore ./MyApi.csproj --use-lock-file'
                 }
             }
         }
 
         stage('SonarQube Analysis') {
             steps {
-                catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
-                    withSonarQubeEnv('SonarQube') {
-                        sh """
-                            dotnet sonarscanner begin /k:mydotnetapp /d:sonar.login=$SONAR_TOKEN
-                            dotnet build MyApi/MyApi.csproj
-                            dotnet sonarscanner end /d:sonar.login=$SONAR_TOKEN
-                        """
+                withSonarQubeEnv('SonarQube') {
+                    withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
+                        dir('MyApi') {
+                            sh '''
+                                export PATH="$HOME/.dotnet/tools:$PATH"
+                                dotnet sonarscanner begin /k:mydotnetapp /d:sonar.login=$SONAR_TOKEN
+                                dotnet build ./MyApi.csproj
+                                dotnet sonarscanner end /d:sonar.login=$SONAR_TOKEN
+                            '''
+                        }
                     }
                 }
             }
@@ -40,33 +51,31 @@ pipeline {
 
         stage('Build Docker Image') {
             steps {
-                sh "docker build -t $ACR_NAME/mydotnetapp:latest ."
+                sh '''
+                    docker build -t $ACR_NAME/mydotnetapp:latest -f Dockerfile .
+                '''
             }
         }
 
-        stage('Push to ACR') {
+        stage('Trivy Scan') {
             steps {
-                withCredentials([usernamePassword(
-                    credentialsId: 'acr-credentials-id',  // replace with your Jenkins ACR creds
-                    usernameVariable: 'ACR_USERNAME',
-                    passwordVariable: 'ACR_PASSWORD'
-                )]) {
-                    sh """
-                        echo $ACR_PASSWORD | docker login $ACR_NAME.azurecr.io -u $ACR_USERNAME --password-stdin
-                        docker push $ACR_NAME/mydotnetapp:latest
-                    """
-                }
+                sh 'trivy image $ACR_NAME/mydotnetapp:latest || true'
             }
         }
 
+        stage('Login to ACR and Push') {
+            steps {
+                sh '''
+                    az acr login --name $ACR_NAME
+                    docker push $ACR_NAME/mydotnetapp:latest
+                '''
+            }
+        }
     }
 
     post {
         always {
             echo "Pipeline finished!"
-        }
-        success {
-            echo "Pipeline succeeded!"
         }
         failure {
             echo "Pipeline failed!"
