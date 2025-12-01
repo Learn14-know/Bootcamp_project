@@ -4,8 +4,9 @@ pipeline {
     environment {
         SONAR_HOST_URL = 'http://20.151.236.33:9000'
         ACR_NAME = 'myacrregistry123456789'
-        IMAGE_NAME = 'MyDotNetApp'
+        IMAGE_NAME = 'mydotnetapi'
         IMAGE_TAG = 'latest'
+        DOTNET_TOOLS_PATH = "$HOME/.dotnet/tools"
     }
 
     stages {
@@ -34,14 +35,17 @@ pipeline {
             }
         }
 
+        stage('Install Dependencies') {
+            steps {
+                // Install Swagger if missing
+                sh "dotnet add ${PROJECT_FILE} package Swashbuckle.AspNetCore --version 6.6.0 || true"
+            }
+        }
+
         stage('Restore & Build') {
             steps {
-                sh """
-                    # Install Swagger package if missing
-                    dotnet add ${PROJECT_FILE} package Swashbuckle.AspNetCore --version 6.6.0
-                    dotnet restore ${PROJECT_FILE}
-                    dotnet build ${PROJECT_FILE} -c Release --no-restore
-                """
+                sh "dotnet restore ${PROJECT_FILE}"
+                sh "dotnet build ${PROJECT_FILE} -c Release --no-restore"
             }
         }
 
@@ -49,22 +53,20 @@ pipeline {
             steps {
                 withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
                     sh """
-                        # Install SonarScanner for .NET globally if not installed
+                        # Add .NET tools path
+                        export PATH="$PATH:${DOTNET_TOOLS_PATH}"
+
+                        # Install dotnet-sonarscanner if missing
                         dotnet tool install --global dotnet-sonarscanner || true
-                        export PATH="\$PATH:\$HOME/.dotnet/tools"
 
                         # Begin SonarQube analysis
-                        dotnet sonarscanner begin \
-                            /k:${IMAGE_NAME} \
-                            /d:sonar.host.url=${SONAR_HOST_URL} \
-                            /d:sonar.login=${SONAR_TOKEN} \
-                            /s:SonarQube.AnalysisSettings.xml
+                        dotnet sonarscanner begin /k:MyDotNetApp /d:sonar.host.url=${SONAR_HOST_URL} /d:sonar.login=$SONAR_TOKEN
 
-                        # Build project for analysis
+                        # Build project (required for analysis)
                         dotnet build ${PROJECT_FILE} -c Release
 
                         # End SonarQube analysis
-                        dotnet sonarscanner end /d:sonar.login=${SONAR_TOKEN}
+                        dotnet sonarscanner end /d:sonar.login=$SONAR_TOKEN
                     """
                 }
             }
