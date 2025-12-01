@@ -2,55 +2,54 @@ pipeline {
     agent any
 
     environment {
-        ACR_REGISTRY = 'myacrregistry123456789.azurecr.io'
-        IMAGE_NAME = 'mydotnetapp'  // lowercase for Docker
-        SONAR_HOST_URL = 'http://20.151.236.33:9000'
+        SONAR_TOKEN = credentials('sonar-token')
+        ACR_NAME = 'myacrregistry123456789'
+        IMAGE_NAME = 'mydotnetapp' // lowercase required for Docker
+        IMAGE_TAG = 'latest'
     }
 
     stages {
-
         stage('Checkout SCM') {
             steps {
-                git(
-                    url: 'https://github.com/Learn14-know/Bootcamp_project',
-                    credentialsId: 'git-credential-id',
-                    branch: 'main'
-                )
+                checkout scm
             }
         }
 
         stage('Find Project File') {
             steps {
                 script {
-                    PROJECT_FILE = sh(script: "find . -maxdepth 3 -type f -name '*.csproj' | head -n 1", returnStdout: true).trim()
-                    PROJECT_DIR = sh(script: "dirname ${PROJECT_FILE}", returnStdout: true).trim()
-                    echo "Using project file: ${PROJECT_FILE}"
-                    echo "Project directory: ${PROJECT_DIR}"
+                    // Find first .csproj in repo
+                    def projFile = sh(script: "find . -maxdepth 3 -type f -name '*.csproj' | head -n 1", returnStdout: true).trim()
+                    def projDir = sh(script: "dirname ${projFile}", returnStdout: true).trim()
+                    env.PROJECT_FILE = projFile
+                    env.PROJECT_DIR = projDir
+                    echo "Using project file: ${env.PROJECT_FILE}"
+                    echo "Project directory: ${env.PROJECT_DIR}"
                 }
             }
         }
 
         stage('Restore & Build') {
             steps {
-                dir("${PROJECT_DIR}") {
-                    sh 'dotnet restore ${PROJECT_FILE}'
-                    sh 'dotnet build ${PROJECT_FILE} -c Release --no-restore'
+                dir("${env.PROJECT_DIR}") {
+                    sh "dotnet restore ${env.PROJECT_FILE}"
+                    // Ensure Swashbuckle.AspNetCore package is installed
+                    sh "dotnet add ${env.PROJECT_FILE} package Swashbuckle.AspNetCore --version 6.6.0 || true"
+                    sh "dotnet build ${env.PROJECT_FILE} -c Release --no-restore"
                 }
             }
         }
 
         stage('SonarQube Analysis') {
             steps {
-                withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
-                    dir("${PROJECT_DIR}") {
-                        sh '''
-                            dotnet tool install --global dotnet-sonarscanner
-                            export PATH="$PATH:/var/lib/jenkins/.dotnet/tools"
-                            dotnet sonarscanner begin /k:mydotnetapp /d:sonar.host.url=$SONAR_HOST_URL /d:sonar.login=$SONAR_TOKEN
-                            dotnet build ${PROJECT_FILE}
-                            dotnet sonarscanner end /d:sonar.login=$SONAR_TOKEN
-                        '''
-                    }
+                withEnv(["PATH+DOTNET=/var/lib/jenkins/.dotnet/tools"]) {
+                    sh '''
+                        dotnet tool install --global dotnet-sonarscanner || true
+                        export PATH="$PATH:/var/lib/jenkins/.dotnet/tools"
+                        dotnet sonarscanner begin /k:mydotnetapp /d:sonar.host.url=http://20.151.236.33:9000 /d:sonar.login=${SONAR_TOKEN}
+                        dotnet build ${PROJECT_FILE}
+                        dotnet sonarscanner end /d:sonar.login=${SONAR_TOKEN}
+                    '''
                 }
             }
         }
@@ -58,27 +57,23 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 script {
-                    sh "docker build -t ${ACR_REGISTRY}/${IMAGE_NAME}:latest ."
+                    sh "docker build -t ${ACR_NAME}.azurecr.io/${IMAGE_NAME}:${IMAGE_TAG} ."
                 }
             }
         }
 
         stage('Trivy Scan') {
             steps {
-                script {
-                    sh "trivy image ${ACR_REGISTRY}/${IMAGE_NAME}:latest"
-                }
+                sh "trivy image ${ACR_NAME}.azurecr.io/${IMAGE_NAME}:${IMAGE_TAG}"
             }
         }
 
         stage('Login to ACR and Push') {
             steps {
-                withCredentials([usernamePassword(credentialsId: 'acr-credentials', usernameVariable: 'ACR_USER', passwordVariable: 'ACR_PASS')]) {
-                    sh '''
-                        echo $ACR_PASS | docker login ${ACR_REGISTRY} -u $ACR_USER --password-stdin
-                        docker push ${ACR_REGISTRY}/${IMAGE_NAME}:latest
-                    '''
-                }
+                sh '''
+                    az acr login --name ${ACR_NAME}
+                    docker push ${ACR_NAME}.azurecr.io/${IMAGE_NAME}:${IMAGE_TAG}
+                '''
             }
         }
     }
@@ -86,6 +81,12 @@ pipeline {
     post {
         always {
             echo 'Pipeline finished!'
+        }
+        success {
+            echo 'Pipeline completed successfully.'
+        }
+        failure {
+            echo 'Pipeline failed!'
         }
     }
 }
