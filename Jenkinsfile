@@ -14,17 +14,17 @@ pipeline {
             }
         }
 
-        stage('Restore & Build') {
-            steps {
-                sh 'dotnet restore ./MyApi.csproj --use-lock-file'
-                sh 'dotnet build ./MyApi.csproj -c Release --no-restore'
-            }
-        }
-
+        // Move Swagger installation before build
         stage('Install Swagger if missing') {
             steps {
                 sh 'dotnet add ./MyApi.csproj package Swashbuckle.AspNetCore --version 6.6.1 --no-restore || true'
                 sh 'dotnet restore ./MyApi.csproj --use-lock-file'
+            }
+        }
+
+        stage('Restore & Build') {
+            steps {
+                sh 'dotnet build ./MyApi.csproj -c Release --no-restore'
             }
         }
 
