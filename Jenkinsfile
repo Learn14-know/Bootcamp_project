@@ -16,19 +16,15 @@ pipeline {
 
         stage('Restore & Build') {
             steps {
-                dir('MyApi') {
-                    sh 'dotnet restore ./MyApi.csproj --use-lock-file'
-                    sh 'dotnet build ./MyApi.csproj -c Release --no-restore'
-                }
+                sh 'dotnet restore ./MyApi.csproj --use-lock-file'
+                sh 'dotnet build ./MyApi.csproj -c Release --no-restore'
             }
         }
 
         stage('Install Swagger if missing') {
             steps {
-                dir('MyApi') {
-                    sh 'dotnet add ./MyApi.csproj package Swashbuckle.AspNetCore --version 6.6.1 --no-restore || true'
-                    sh 'dotnet restore ./MyApi.csproj --use-lock-file'
-                }
+                sh 'dotnet add ./MyApi.csproj package Swashbuckle.AspNetCore --version 6.6.1 --no-restore || true'
+                sh 'dotnet restore ./MyApi.csproj --use-lock-file'
             }
         }
 
@@ -36,14 +32,12 @@ pipeline {
             steps {
                 withSonarQubeEnv('SonarQube') {
                     withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
-                        dir('MyApi') {
-                            sh '''
-                                export PATH="$HOME/.dotnet/tools:$PATH"
-                                dotnet sonarscanner begin /k:mydotnetapp /d:sonar.login=$SONAR_TOKEN
-                                dotnet build ./MyApi.csproj
-                                dotnet sonarscanner end /d:sonar.login=$SONAR_TOKEN
-                            '''
-                        }
+                        sh '''
+                            export PATH="$HOME/.dotnet/tools:$PATH"
+                            dotnet sonarscanner begin /k:mydotnetapp /d:sonar.login=$SONAR_TOKEN
+                            dotnet build ./MyApi.csproj
+                            dotnet sonarscanner end /d:sonar.login=$SONAR_TOKEN
+                        '''
                     }
                 }
             }
