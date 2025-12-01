@@ -3,7 +3,7 @@ FROM mcr.microsoft.com/dotnet/sdk:7.0 AS build
 WORKDIR /app
 
 # copy csproj and restore
-COPY MyApi/*.csproj ./MyApi/
+COPY MyApi/MyApi.csproj ./MyApi/
 RUN dotnet restore ./MyApi/MyApi.csproj
 
 # copy everything else
@@ -17,4 +17,5 @@ WORKDIR /app
 COPY --from=build /out .
 
 EXPOSE 80
+
 ENTRYPOINT ["dotnet", "MyApi.dll"]
