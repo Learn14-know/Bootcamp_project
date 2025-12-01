@@ -6,7 +6,7 @@ pipeline {
         ACR_NAME = 'myacrregistry123456789'
         IMAGE_NAME = 'mydotnetapi'
         IMAGE_TAG = 'latest'
-        PROJECT_FILE = ''
+        DOTNET_TOOLS_PATH = "${HOME}/.dotnet/tools"
     }
 
     stages {
@@ -37,9 +37,6 @@ pipeline {
 
         stage('Restore & Build') {
             steps {
-                // Install Swagger package dynamically to fix CS1061 errors
-                sh "dotnet add ${PROJECT_FILE} package Swashbuckle.AspNetCore --version 6.7.0"
-
                 sh "dotnet restore ${PROJECT_FILE}"
                 sh "dotnet build ${PROJECT_FILE} -c Release --no-restore"
             }
@@ -48,18 +45,16 @@ pipeline {
         stage('SonarQube Analysis') {
             steps {
                 withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
-                    // Use SonarScanner Docker image to avoid dotnet-sonarscanner installation issues
+                    // Install dotnet-sonarscanner tool if not already installed
                     sh """
-                        docker run --rm \
-                            -e SONAR_HOST_URL=${SONAR_HOST_URL} \
-                            -e SONAR_LOGIN=${SONAR_TOKEN} \
-                            -v "\$(pwd)":/usr/src \
-                            -w /usr/src \
-                            sonarsource/sonar-scanner-cli:latest \
-                            -Dsonar.projectKey=${IMAGE_NAME} \
-                            -Dsonar.sources=. \
-                            -Dsonar.host.url=\${SONAR_HOST_URL} \
-                            -Dsonar.login=\${SONAR_TOKEN}
+                        if [ ! -f ${DOTNET_TOOLS_PATH}/dotnet-sonarscanner ]; then
+                            dotnet tool install --global dotnet-sonarscanner
+                        fi
+                        export PATH=\$PATH:${DOTNET_TOOLS_PATH}
+
+                        dotnet sonarscanner begin /k:MyDotNetApp /d:sonar.host.url=${SONAR_HOST_URL} /d:sonar.login=${SONAR_TOKEN}
+                        dotnet build ${PROJECT_FILE}
+                        dotnet sonarscanner end /d:sonar.login=${SONAR_TOKEN}
                     """
                 }
             }
