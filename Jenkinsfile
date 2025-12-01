@@ -2,8 +2,8 @@ pipeline {
     agent any
 
     environment {
-        DOTNET_ROOT = "$HOME/.dotnet"
-        PATH = "$HOME/.dotnet/tools:$PATH:$PATH"
+        DOTNET_ROOT = "$HOME/dotnet"
+        PATH = "$DOTNET_ROOT:$HOME/.dotnet/tools:$PATH"
         ACR_NAME = "myacrregistry123456789"
     }
 
@@ -14,40 +14,44 @@ pipeline {
             }
         }
 
-        // Move Swagger installation before build
         stage('Install Swagger if missing') {
             steps {
-                sh 'dotnet add ./MyApi.csproj package Swashbuckle.AspNetCore --version 6.6.1 --no-restore || true'
-                sh 'dotnet restore ./MyApi.csproj --use-lock-file'
+                sh '''
+                    echo "Installing Swashbuckle.AspNetCore if not already installed..."
+                    dotnet add ./MyApi.csproj package Swashbuckle.AspNetCore --version 6.6.1 --no-restore || true
+                    dotnet restore ./MyApi.csproj --use-lock-file
+                '''
             }
         }
 
         stage('Restore & Build') {
             steps {
-                sh 'dotnet build ./MyApi.csproj -c Release --no-restore'
-            }
-        }
-
-       stage('SonarQube Analysis') {
-    steps {
-        withSonarQubeEnv('SonarQube') {
-            withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
                 sh '''
-                    export DOTNET_ROOT=$HOME/dotnet
-                    export PATH=$DOTNET_ROOT:$HOME/.dotnet/tools:$PATH
-                    dotnet sonarscanner begin /k:mydotnetapp /d:sonar.login=$SONAR_TOKEN
-                    dotnet build ./MyApi.csproj
-                    dotnet sonarscanner end /d:sonar.login=$SONAR_TOKEN
+                    echo "Building the project..."
+                    dotnet build ./MyApi.csproj -c Release --no-restore
                 '''
             }
         }
-    }
-}
 
+        stage('SonarQube Analysis') {
+            steps {
+                withSonarQubeEnv('SonarQube') {
+                    withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
+                        sh '''
+                            echo "Running SonarQube Analysis..."
+                            dotnet sonarscanner begin /k:mydotnetapp /d:sonar.login=$SONAR_TOKEN
+                            dotnet build ./MyApi.csproj
+                            dotnet sonarscanner end /d:sonar.login=$SONAR_TOKEN
+                        '''
+                    }
+                }
+            }
+        }
 
         stage('Build Docker Image') {
             steps {
                 sh '''
+                    echo "Building Docker image..."
                     docker build -t $ACR_NAME/mydotnetapp:latest -f Dockerfile .
                 '''
             }
@@ -62,6 +66,7 @@ pipeline {
         stage('Login to ACR and Push') {
             steps {
                 sh '''
+                    echo "Logging in to Azure Container Registry and pushing image..."
                     az acr login --name $ACR_NAME
                     docker push $ACR_NAME/mydotnetapp:latest
                 '''
