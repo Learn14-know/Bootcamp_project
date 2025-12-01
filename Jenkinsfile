@@ -5,7 +5,7 @@ pipeline {
         ACR_NAME = "myacrregistry123456789"
         IMAGE_NAME = "mydotnetapi"
         GIT_URL = "https://github.com/Learn14-know/Bootcamp_Project"
-        SONAR_HOST_URL = "http://<sonarqube-server>:9000"
+        SONAR_HOST_URL = "http://20.151.236.33:9000"
         SONAR_LOGIN = credentials('sonar-token') // SonarQube token stored in Jenkins
     }
 
