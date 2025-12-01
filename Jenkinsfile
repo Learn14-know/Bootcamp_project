@@ -4,7 +4,7 @@ pipeline {
     environment {
         SONAR_HOST_URL = 'http://20.151.236.33:9000'
         ACR_NAME = 'myacrregistry123456789'
-        IMAGE_NAME = 'Mydotnetapp'
+        IMAGE_NAME = 'mydotnetapp'
         IMAGE_TAG = 'latest'
         DOTNET_TOOLS_PATH = "${env.HOME}/.dotnet/tools"
         PATH = "${env.PATH}:${env.HOME}/.dotnet/tools"
