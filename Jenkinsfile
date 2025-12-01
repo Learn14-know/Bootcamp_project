@@ -1,25 +1,15 @@
 pipeline {
     agent any
     environment {
-        SONAR_TOKEN = credentials('sonar-token') // Jenkins credential for SonarQube
-        PROJECT_NAME = "mydotnetapp"             // Docker image/project name
-        ACR_NAME = "myacrregistry123456789"      // Your ACR
+        SONAR_TOKEN = credentials('sonar-token')
+        PROJECT_NAME = "mydotnetapp"
+        ACR_NAME = "myacrregistry123456789"  // <-- Added ACR name
+        PATH = "$PATH:/home/azureuser/.dotnet/tools" // <-- for dotnet-sonarscanner
     }
     stages {
-
         stage('Checkout') {
             steps {
                 checkout scm
-            }
-        }
-
-        stage('Install Swagger if missing') {
-            steps {
-                dir('.') {
-                    sh '''
-                        dotnet add ./MyApi.csproj package Swashbuckle.AspNetCore --version 6.6.1 --no-restore || echo "Swagger already installed"
-                    '''
-                }
             }
         }
 
@@ -36,7 +26,7 @@ pipeline {
         stage('SonarQube Analysis') {
             steps {
                 catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
-                    withSonarQubeEnv('SonarQube') { // Replace with your exact SonarQube Jenkins config
+                    withSonarQubeEnv('SonarQube') {
                         sh "dotnet sonarscanner begin /k:${PROJECT_NAME} /d:sonar.login=${SONAR_TOKEN}"
                         sh 'dotnet build ./MyApi.csproj'
                         sh "dotnet sonarscanner end /d:sonar.login=${SONAR_TOKEN}"
