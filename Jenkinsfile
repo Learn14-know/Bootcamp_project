@@ -3,8 +3,8 @@ pipeline {
     environment {
         SONAR_TOKEN = credentials('sonar-token')
         PROJECT_NAME = "mydotnetapp"
-        ACR_NAME = "myacrregistry123456789"  // <-- Added ACR name
-        PATH = "$PATH:/home/azureuser/.dotnet/tools" // <-- for dotnet-sonarscanner
+        ACR_NAME = "myacrregistry123456789"
+        PATH = "$PATH:/home/azureuser/.dotnet/tools"
     }
     stages {
         stage('Checkout') {
@@ -16,7 +16,12 @@ pipeline {
         stage('Restore & Build') {
             steps {
                 dir('.') {
-                    sh 'dotnet clean ./MyApi.csproj'
+                    // Install Swagger if missing
+                    sh """
+                    dotnet list package | grep Swashbuckle.AspNetCore || dotnet add ./MyApi.csproj package Swashbuckle.AspNetCore --version 6.6.1
+                    """
+                    
+                    // Restore and build
                     sh 'dotnet restore ./MyApi.csproj --use-lock-file'
                     sh 'dotnet build ./MyApi.csproj -c Release --no-restore'
                 }
@@ -37,9 +42,7 @@ pipeline {
 
         stage('Build Docker Image') {
             steps {
-                sh """
-                    docker build -t ${PROJECT_NAME}:latest .
-                """
+                sh "docker build -t ${PROJECT_NAME}:latest ."
             }
         }
 
