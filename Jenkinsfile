@@ -15,10 +15,6 @@ pipeline {
             steps {
                 dir('.') {
                     sh 'dotnet clean ./MyApi.csproj'
-
-                    // Install Swashbuckle to fix AddSwaggerGen / UseSwagger errors
-                    sh 'dotnet add ./MyApi.csproj package Swashbuckle.AspNetCore --version 6.6.1 --no-restore || true'
-
                     sh 'dotnet restore ./MyApi.csproj --use-lock-file'
                     sh 'dotnet build ./MyApi.csproj -c Release --no-restore'
                 }
@@ -29,7 +25,7 @@ pipeline {
             steps {
                 // Catch errors so pipeline continues even if Sonar fails
                 catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
-                    withSonarQubeEnv('YourSonarQubeInstallationName') { // <-- replace with your exact Jenkins config name
+                    withSonarQubeEnv('SonarQube') { // <-- updated to match your Jenkins config
                         sh "dotnet sonarscanner begin /k:${PROJECT_NAME} /d:sonar.login=${SONAR_TOKEN}"
                         sh 'dotnet build ./MyApi.csproj'
                         sh "dotnet sonarscanner end /d:sonar.login=${SONAR_TOKEN}"
