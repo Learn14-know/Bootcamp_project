@@ -14,14 +14,11 @@ pipeline {
     }
 
     stages {
-        stage('Prepare Workspace') {
+        stage('Clean Workspace') {
             steps {
                 script {
-                    echo "Fixing workspace permissions and cleaning old build artifacts..."
-                    sh '''
-                        chmod -R 775 .
-                        rm -rf obj bin
-                    '''
+                    echo "Deleting workspace to remove stale Git locks and old files..."
+                    deleteDir()
                 }
             }
         }
@@ -29,6 +26,18 @@ pipeline {
         stage('Checkout') {
             steps {
                 checkout scm
+            }
+        }
+
+        stage('Prepare Workspace') {
+            steps {
+                script {
+                    echo "Fixing permissions and cleaning old build artifacts..."
+                    sh '''
+                        chmod -R 775 .
+                        rm -rf obj bin
+                    '''
+                }
             }
         }
 
