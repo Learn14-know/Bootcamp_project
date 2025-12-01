@@ -65,11 +65,20 @@ pipeline {
 
         stage('Login to ACR and Push') {
             steps {
-                sh '''
-                    echo "Logging in to Azure Container Registry and pushing image..."
-                    az acr login --name $ACR_NAME
-                    docker push $ACR_NAME/mydotnetapp:latest
-                '''
+                withCredentials([
+                    string(credentialsId: 'jenkins-acr-sp', variable: 'CLIENT_SECRET'),
+                    string(credentialsId: 'azure-tenant-id', variable: 'TENANT_ID')
+                ]) {
+                    // For SP, we also need the App ID
+                    env.CLIENT_ID = 'c03990aa-a13c-4bc2-84b7-6e0350b00eff'
+                    
+                    sh '''
+                    echo "Logging in with Service Principal..."
+                    az login --service-principal -u $CLIENT_ID -p $CLIENT_SECRET --tenant $TENANT_ID
+                    az acr login --name myacrregistry123456789
+                    docker push myacrregistry123456789.azurecr.io/mydotnetapp:latest
+                    '''
+                }
             }
         }
     }
