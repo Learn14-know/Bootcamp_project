@@ -2,13 +2,14 @@
 FROM mcr.microsoft.com/dotnet/sdk:7.0 AS build
 WORKDIR /app
 
-# copy csproj and restore
-COPY MyApi/MyApi.csproj ./MyApi/
-RUN dotnet restore ./MyApi/MyApi.csproj
+# copy solution and project
+COPY *.sln .  # only if solution exists
+COPY MyApi/ ./MyApi/
 
-# copy everything else
-COPY MyApi/. ./MyApi/
 WORKDIR /app/MyApi
+
+# restore & publish
+RUN dotnet restore
 RUN dotnet publish -c Release -o /out
 
 # Stage 2: Run
@@ -17,5 +18,4 @@ WORKDIR /app
 COPY --from=build /out .
 
 EXPOSE 80
-
 ENTRYPOINT ["dotnet", "MyApi.dll"]
