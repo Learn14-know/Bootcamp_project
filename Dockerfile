@@ -2,17 +2,16 @@
 FROM mcr.microsoft.com/dotnet/sdk:7.0 AS build
 WORKDIR /app
 
-# Copy solution and project files
-COPY *.sln ./
+# copy csproj and restore
 COPY MyApi/*.csproj ./MyApi/
-RUN dotnet restore
+RUN dotnet restore ./MyApi/MyApi.csproj
 
-# Copy source files
+# copy everything else
 COPY MyApi/. ./MyApi/
 WORKDIR /app/MyApi
 RUN dotnet publish -c Release -o /out
 
-# Stage 2: Runtime
+# Stage 2: Run
 FROM mcr.microsoft.com/dotnet/aspnet:7.0
 WORKDIR /app
 COPY --from=build /out .
