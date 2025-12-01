@@ -64,7 +64,7 @@ pipeline {
         }
 
         stage('Login to ACR and Push') {
-            teps {
+            steps {
                 withCredentials([
                     string(credentialsId: 'jenkins-acr-sp', variable: 'CLIENT_SECRET'),
                     string(credentialsId: 'azure-tenant-id', variable: 'TENANT_ID')
