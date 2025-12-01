@@ -39,7 +39,7 @@ pipeline {
                     withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
                         sh '''
                             echo "Running SonarQube Analysis..."
-                            dotnet sonarscanner begin /k:mydotnetapp /d:sonar.login=$SONAR_TOKEN
+                            dotnet sonarscanner begin /k:MyDotNetApp /d:sonar.login=$SONAR_TOKEN
                             dotnet build ./MyApi.csproj
                             dotnet sonarscanner end /d:sonar.login=$SONAR_TOKEN
                         '''
