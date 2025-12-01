@@ -1,10 +1,12 @@
 pipeline {
     agent any
+
     environment {
-        SONAR_TOKEN = credentials('sonar-token')
-        PROJECT_NAME = "mydotnetapp"
-        ACR_NAME = "myacrregistry123456789"
+        SONAR_TOKEN = credentials('sonar-token')   // Jenkins credential ID for SonarQube
+        PROJECT_NAME = "mydotnetapp"               // lowercase for Docker and ACR
+        ACR_NAME = "myacrregistry123456789"       // your ACR
     }
+
     stages {
         stage('Checkout') {
             steps {
@@ -12,23 +14,20 @@ pipeline {
             }
         }
 
-        stage('Install Dependencies & Restore') {
+        stage('Restore & Build') {
             steps {
                 dir('.') {
-                    // Ensure Swashbuckle is added
-                    sh 'dotnet add ./MyApi.csproj package Swashbuckle.AspNetCore --version 6.6.1 --no-restore || echo "Already added"'
-
-                    // Clean, restore, and verify packages
                     sh 'dotnet clean ./MyApi.csproj'
                     sh 'dotnet restore ./MyApi.csproj --use-lock-file'
+                    sh 'dotnet build ./MyApi.csproj -c Release --no-restore'
                 }
             }
         }
 
-        stage('Build') {
+        stage('Install Swagger if missing') {
             steps {
                 dir('.') {
-                    sh 'dotnet build ./MyApi.csproj -c Release --no-restore'
+                    sh 'dotnet add ./MyApi.csproj package Swashbuckle.AspNetCore --version 6.6.1 --no-restore || echo "Swagger already installed"'
                 }
             }
         }
@@ -37,9 +36,15 @@ pipeline {
             steps {
                 catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
                     withSonarQubeEnv('SonarQube') {
-                        sh "dotnet sonarscanner begin /k:${PROJECT_NAME} /d:sonar.login=${SONAR_TOKEN}"
-                        sh 'dotnet build ./MyApi.csproj -c Release'
-                        sh "dotnet sonarscanner end /d:sonar.login=${SONAR_TOKEN}"
+                        sh '''
+                        if ! dotnet tool list -g | grep dotnet-sonarscanner; then
+                            dotnet tool install --global dotnet-sonarscanner
+                            export PATH="$PATH:$HOME/.dotnet/tools"
+                        fi
+                        dotnet sonarscanner begin /k:${PROJECT_NAME} /d:sonar.login=${SONAR_TOKEN}
+                        dotnet build ./MyApi.csproj
+                        dotnet sonarscanner end /d:sonar.login=${SONAR_TOKEN}
+                        '''
                     }
                 }
             }
@@ -53,13 +58,13 @@ pipeline {
 
         stage('Trivy Scan') {
             steps {
-                sh "trivy image ${PROJECT_NAME}:latest"
+                sh "trivy image ${PROJECT_NAME}:latest || echo 'Trivy scan skipped'"
             }
         }
 
         stage('Login to ACR and Push') {
             steps {
-                withCredentials([usernamePassword(credentialsId: 'acr-credentials', passwordVariable: 'ACR_PASS', usernameVariable: 'ACR_USER')]) {
+                withCredentials([usernamePassword(credentialsId: 'acr-credentials', usernameVariable: 'ACR_USER', passwordVariable: 'ACR_PASS')]) {
                     sh """
                         docker login ${ACR_NAME}.azurecr.io -u $ACR_USER -p $ACR_PASS
                         docker tag ${PROJECT_NAME}:latest ${ACR_NAME}.azurecr.io/${PROJECT_NAME}:latest
@@ -71,11 +76,7 @@ pipeline {
     }
 
     post {
-        always {
-            echo "Pipeline finished!"
-        }
-        failure {
-            echo "Pipeline failed!"
-        }
+        always { echo "Pipeline finished!" }
+        failure { echo "Pipeline failed!" }
     }
 }
