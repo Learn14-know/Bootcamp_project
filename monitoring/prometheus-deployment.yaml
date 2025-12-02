@@ -1,3 +1,118 @@
+# ----------------------------
+# 1️⃣ Namespace
+# ----------------------------
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+
+---
+
+# ----------------------------
+# 2️⃣ kube-state-metrics Deployment + Service
+# ----------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kube-state-metrics
+  namespace: monitoring
+  labels:
+    app: kube-state-metrics
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kube-state-metrics
+  template:
+    metadata:
+      labels:
+        app: kube-state-metrics
+    spec:
+      containers:
+      - name: kube-state-metrics
+        image: quay.io/coreos/kube-state-metrics:v2.12.0
+        ports:
+        - containerPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kube-state-metrics
+  namespace: monitoring
+spec:
+  selector:
+    app: kube-state-metrics
+  ports:
+    - port: 8080
+      targetPort: 8080
+
+---
+
+# ----------------------------
+# 3️⃣ Node Exporter DaemonSet + Service
+# ----------------------------
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: node-exporter
+  namespace: monitoring
+  labels:
+    app: node-exporter
+spec:
+  selector:
+    matchLabels:
+      app: node-exporter
+  template:
+    metadata:
+      labels:
+        app: node-exporter
+    spec:
+      containers:
+      - name: node-exporter
+        image: quay.io/prometheus/node-exporter:v1.6.1
+        ports:
+        - containerPort: 9100
+          name: metrics
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: node-exporter
+  namespace: monitoring
+spec:
+  selector:
+    app: node-exporter
+  ports:
+    - port: 9100
+      targetPort: 9100
+
+---
+
+# ----------------------------
+# 4️⃣ Prometheus ConfigMap
+# ----------------------------
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: monitoring
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+    scrape_configs:
+      - job_name: 'kube-state-metrics'
+        static_configs:
+          - targets: ['kube-state-metrics.monitoring.svc.cluster.local:8080']
+      - job_name: 'node-exporter'
+        static_configs:
+          - targets: ['node-exporter.monitoring.svc.cluster.local:9100']
+
+---
+
+# ----------------------------
+# 5️⃣ Prometheus Deployment + NodePort Service
+# ----------------------------
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -27,3 +142,17 @@ spec:
       - name: config-volume
         configMap:
           name: prometheus-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+  namespace: monitoring
+spec:
+  type: NodePort
+  selector:
+    app: prometheus
+  ports:
+    - port: 9090
+      targetPort: 9090
+      nodePort: 32001
