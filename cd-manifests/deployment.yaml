@@ -19,8 +19,6 @@ spec:
       - name: mydotnetapp
         image: myacrregistry123456789.azurecr.io/mydotnetapp:latest
         ports:
-        - containerPort: 80
+        - containerPort: 8080
 
-          env:
-        - name: ASPNETCORE_URLS
-          value: "http://+:80"
+         
